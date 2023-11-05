@@ -8,6 +8,7 @@ import os
 import argparse
 import yaml
 import requests
+from pathspec.pathspec import PathSpec
 
 def select_server(env, apiname):
     for item in env:
@@ -177,10 +178,14 @@ def dainstall():
     archive = tempfile.NamedTemporaryFile(suffix=".zip")
     zf = zipfile.ZipFile(archive, compression=zipfile.ZIP_DEFLATED, mode='w')
     args.directory = re.sub(r'/$', '', args.directory)
+    gitignore_path = os.path.join(args.directory, '.gitignore')
+    with open(gitignore_path, 'r') as file:
+       gitignore_lines = file.read().splitlines()
+    gitignore_spec = PathSpec.from_lines('gitwildmatch', gitignore_lines)
     for root, dirs, files in os.walk(args.directory, topdown=True):
-        dirs[:] = [d for d in dirs if d not in ['.git', '__pycache__', '.mypy_cache', '.venv', '.history'] and not d.endswith('.egg-info')]
+        dirs[:] = [d for d in dirs if not gitignore_spec.match_file(os.path.join(root, d)) and not d in ['.git', '__pycache__', '.mypy_cache', '.venv', '.history'] and not d.endswith('.egg-info')]
         for file in files:
-            if file.endswith('~') or file.endswith('.pyc') or file.startswith('#') or file.startswith('.#') or file == '.gitignore':
+            if gitignore_spec.match_file(os.path.join(root, file)) or file.endswith('~') or file.endswith('.pyc') or file.startswith('#') or file.startswith('.#') or file == '.gitignore':
                 continue
             zf.write(os.path.join(root, file), os.path.relpath(os.path.join(root, file), os.path.join(args.directory, '..')))
     zf.close()
