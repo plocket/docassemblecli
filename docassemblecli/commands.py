@@ -177,68 +177,135 @@ def dainstall():
     archive = tempfile.NamedTemporaryFile(suffix=".zip")
     zf = zipfile.ZipFile(archive, compression=zipfile.ZIP_DEFLATED, mode='w')
     args.directory = re.sub(r'/$', '', args.directory)
-    for root, dirs, files in os.walk(args.directory, topdown=True):
-        dirs[:] = [d for d in dirs if d not in ['.git', '__pycache__', '.mypy_cache', '.venv', '.history'] and not d.endswith('.egg-info')]
-        for file in files:
-            if file.endswith('~') or file.endswith('.pyc') or file.startswith('#') or file.startswith('.#') or file == '.gitignore':
-                continue
-            zf.write(os.path.join(root, file), os.path.relpath(os.path.join(root, file), os.path.join(args.directory, '..')))
+
+
+    import shutil
+    import subprocess
+
+    # Get list of globs from .gitignore
+    with open(os.path.join(args.directory, '.gitignore'), 'r') as file:
+        gitignore_lines = file.read().splitlines()
+        # print(1)
+        # print(gitignore_lines)
+    # Modify globs
+    gitignore_lines += ['.git', '__pycache__', '.mypy_cache', '.venv', '.history','*.egg-info/'] # directories
+    gitignore_lines += ['*~', '!*~/', '*.pyc', '!*.pyc/', '#*', '!#*/', '.#*', '!.#*/', '.gitignore'] # files
+
+    # Save all globs
+    gitignore = tempfile.NamedTemporaryFile(suffix=".txt")
+    gitignore.writelines(("%s\n" % line).encode() for line in gitignore_lines)
+    print('----------')
+    print(gitignore.name)
+    new_gitignore_path = gitignore.name
+
+
+    # git ls-tree -t --full-tree -r --name-only HEAD
+    try:
+        # Doesn't get things that aren't checked in
+        # List untracked unignored files: https://www.phind.com/search?cache=yvds6txeeplwaigsyf5a7xql
+        # Get untracked non-ignored files: git status --short | grep '^?' | cut -d\  -f2-
+        # git ls-files -o --exclude-standard
+        # Doesn't matter if it's duplicated
+        # Only works when running inside the folder with the .gitignore
+
+        # # ~Args to get .gitignore from different dir: git ls-tree --exclude-from=tmpiquiqlg1 <tree-ish>~
+        # # Nvm. There is no exclude_from arg
+        # exclude_from = f'--exclude-from="{new_gitignore_path}"'
+
+        git_dirs = subprocess.run(['git', 'ls-tree', '-t', '--full-tree', '-r', '--name-only', 'HEAD'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+        git_dirs.check_returncode()
+        untracked_files = subprocess.run(['git', 'ls-files', '-o', '--exclude-standard'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+        untracked_files.check_returncode()
+    except subprocess.CalledProcessError as err:
+        print("Error:\nreturn code: ", err.returncode, "\nError: ", err.stderr)
+        raise
+
+    # with tempfile.NamedTemporaryFile(delete=False) as the_file:
+    #     the_file.writelines(("%s\n" % line).encode() for line in gitignore_lines)
+    #     shutil.move(the_file.name, os.path.join(os.path.dirname(the_file.name), '.gitignore'))
+    #     new_gitignore_path = the_file.name
+    #     print('----------')
+    #     print(new_gitignore_path)
+
+    # # Temp to examine
+    # with open(os.path.dirname(new_gitignore_path), 'r') as file:
+    #     print(file.read())
+
+    # with open(new_gitignore_path, 'r') as f:
+    #     content = f.read().splitlines()
+    #     content = [line.decode() for line in content]
+
+    # # Use os.walk() to walk through the directory containing the temporary file
+    # for dirpath, dirnames, filenames in os.walk(os.path.dirname(new_gitignore_path)):
+    #     for filename in filenames:
+    #         print(os.path.join(dirpath, filename))
+
+    # Delete the temporary file
+    gitignore.close()
+
+
+    # for root, dirs, files in os.walk(args.directory, topdown=True):
+    #     dirs[:] = [d for d in dirs if d not in ['.git', '__pycache__', '.mypy_cache', '.venv', '.history'] and not d.endswith('.egg-info')]
+    #     for file in files:
+    #         if file.endswith('~') or file.endswith('.pyc') or file.startswith('#') or file.startswith('.#') or file == '.gitignore':
+    #             continue
+    #         zf.write(os.path.join(root, file), os.path.relpath(os.path.join(root, file), os.path.join(args.directory, '..')))
     zf.close()
-    archive.seek(0)
-    if args.playground:
-        if args.project and args.project != 'default':
-            data['project'] = args.project
-        project_endpoint = apiurl + '/api/playground/project'
-        project_list = requests.get(project_endpoint, headers={'X-API-Key': apikey})
-        if project_list.status_code == 200:
-            if not args.project in project_list:
-                try:
-                    create_project = requests.post(project_endpoint, data={'project': args.project}, headers={'X-API-Key': apikey})
-                except:
-                    sys.exit("create project POST returned " + project_list.text)
-        else:
-            sys.stdout.write("\n")
-            sys.exit("playground list of projects GET returned " + str(project_list.statuscode) + ": " + project_list.text)
-        r = requests.post(apiurl + '/api/playground_install', data=data, files={'file': archive}, headers={'X-API-Key': apikey})
-        if r.status_code == 400:
-            try:
-                error_message = r.json()
-            except:
-                error_message = ''
-            if 'project' not in data or error_message != 'Invalid project.':
-                sys.exit('playground_install POST returned ' + str(r.status_code) + ": " + r.text)
-            r = requests.post(apiurl + '/api/playground/project', data={'project': data['project']}, headers={'X-API-Key': apikey})
-            if r.status_code != 204:
-                sys.exit("needed to create playground project but POST to api/playground/project returned " + str(r.statuscode) + ": " + r.text)
-            archive.seek(0)
-            r = requests.post(apiurl + '/api/playground_install', data=data, files={'file': archive}, headers={'X-API-Key': apikey})
-        if r.status_code == 200:
-            try:
-                info = r.json()
-            except:
-                sys.exit(r.text)
-            task_id = info['task_id']
-            success = wait_for_server(args.playground, task_id, apikey, apiurl)
-        elif r.status_code == 204:
-            success = True
-        else:
-            sys.stdout.write("\n")
-            sys.exit("playground_install POST returned " + str(r.status_code) + ": " + r.text)
-        if success:
-            sys.stdout.write("\nInstalled.\n")
-            sys.stdout.flush()
-        else:
-            sys.exit("\nInstall failed\n")
-    else:
-        r = requests.post(apiurl + '/api/package', data=data, files={'zip': archive}, headers={'X-API-Key': apikey})
-        if r.status_code != 200:
-            sys.exit("package POST returned " + str(r.status_code) + ": " + r.text)
-        info = r.json()
-        task_id = info['task_id']
-        if wait_for_server(args.playground, task_id, apikey, apiurl):
-            sys.stdout.write("\nInstalled.\n")
-        if args.norestart:
-            r = requests.post(apiurl + '/api/clear_cache', headers={'X-API-Key': apikey})
-            if r.status_code != 204:
-                sys.exit("clear_cache returned " + str(r.status_code) + ": " + r.text)
+    # archive.seek(0)
+    # if args.playground:
+    #     if args.project and args.project != 'default':
+    #         data['project'] = args.project
+    #     project_endpoint = apiurl + '/api/playground/project'
+    #     project_list = requests.get(project_endpoint, headers={'X-API-Key': apikey})
+    #     if project_list.status_code == 200:
+    #         if not args.project in project_list:
+    #             try:
+    #                 create_project = requests.post(project_endpoint, data={'project': args.project}, headers={'X-API-Key': apikey})
+    #             except:
+    #                 sys.exit("create project POST returned " + project_list.text)
+    #     else:
+    #         sys.stdout.write("\n")
+    #         sys.exit("playground list of projects GET returned " + str(project_list.statuscode) + ": " + project_list.text)
+    #     r = requests.post(apiurl + '/api/playground_install', data=data, files={'file': archive}, headers={'X-API-Key': apikey})
+    #     if r.status_code == 400:
+    #         try:
+    #             error_message = r.json()
+    #         except:
+    #             error_message = ''
+    #         if 'project' not in data or error_message != 'Invalid project.':
+    #             sys.exit('playground_install POST returned ' + str(r.status_code) + ": " + r.text)
+    #         r = requests.post(apiurl + '/api/playground/project', data={'project': data['project']}, headers={'X-API-Key': apikey})
+    #         if r.status_code != 204:
+    #             sys.exit("needed to create playground project but POST to api/playground/project returned " + str(r.statuscode) + ": " + r.text)
+    #         archive.seek(0)
+    #         r = requests.post(apiurl + '/api/playground_install', data=data, files={'file': archive}, headers={'X-API-Key': apikey})
+    #     if r.status_code == 200:
+    #         try:
+    #             info = r.json()
+    #         except:
+    #             sys.exit(r.text)
+    #         task_id = info['task_id']
+    #         success = wait_for_server(args.playground, task_id, apikey, apiurl)
+    #     elif r.status_code == 204:
+    #         success = True
+    #     else:
+    #         sys.stdout.write("\n")
+    #         sys.exit("playground_install POST returned " + str(r.status_code) + ": " + r.text)
+    #     if success:
+    #         sys.stdout.write("\nInstalled.\n")
+    #         sys.stdout.flush()
+    #     else:
+    #         sys.exit("\nInstall failed\n")
+    # else:
+    #     r = requests.post(apiurl + '/api/package', data=data, files={'zip': archive}, headers={'X-API-Key': apikey})
+    #     if r.status_code != 200:
+    #         sys.exit("package POST returned " + str(r.status_code) + ": " + r.text)
+    #     info = r.json()
+    #     task_id = info['task_id']
+    #     if wait_for_server(args.playground, task_id, apikey, apiurl):
+    #         sys.stdout.write("\nInstalled.\n")
+    #     if args.norestart:
+    #         r = requests.post(apiurl + '/api/clear_cache', headers={'X-API-Key': apikey})
+    #         if r.status_code != 204:
+    #             sys.exit("clear_cache returned " + str(r.status_code) + ": " + r.text)
     sys.exit(0)
