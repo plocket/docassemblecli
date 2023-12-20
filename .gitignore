@@ -6,3 +6,4 @@ build
 dist
 newversion.sh
 .history
+.pypirc

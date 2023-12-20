@@ -1,20 +1,20 @@
 from setuptools import setup, find_packages
 
-with open("README.md", "r", encoding="utf-8") as fh:
-    long_description = fh.read()
+# with open("README.md", "r", encoding="utf-8") as fh:
+#     long_description = fh.read()
 
 setup(
-    name="docassemblecli",
-    version="0.0.15",
-    author="Jonathan Pyle",
-    author_email="jhpyle@gmail.com",
-    description="CLI utilities for using docassemble",
+    name="alkiln_docassemblecli",
+    version="0.0.1",
+    author="plocket",
+    author_email="52798256+plocket@users.noreply.github.com",
+    description="CLI utilities for using docassemble for ALKiln",
     install_requires=['pyyaml', 'requests'],
-    long_description=long_description,
+    long_description="CLI utilities for using docassemble for ALKiln",
     long_description_content_type="text/markdown",
-    url="https://github.com/jhpyle/docassemblecli",
+    url="https://github.com/plocket/docassemblecli",
     project_urls={
-        "Bug Tracker": "https://github.com/jhpyle/docassemblecli/issues",
+        "Bug Tracker": "https://github.com/plocket/docassemblecli/issues",
     },
     classifiers=[
         "License :: OSI Approved :: MIT License",
